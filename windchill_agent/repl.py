@@ -41,12 +41,7 @@ HELP_TEXT = f"""
   {C.GREEN}logs [file_pattern=xxx]{S.RESET_ALL}             查询日志列表
   {C.GREEN}view_log <filename>{S.RESET_ALL}                 查看日志内容
 
-{Style.BRIGHT}审批操作:{S.RESET_ALL}
-  {C.GREEN}approve <task_id> [comment]{S.RESET_ALL}         审批任务
-  {C.GREEN}reject <task_id> <原因>{S.RESET_ALL}             驳回任务
-
 {Style.BRIGHT}其他:{S.RESET_ALL}
-  {C.GREEN}create_part <编码> <名称>{S.RESET_ALL}           创建零件
   {C.GREEN}wecom <content>{S.RESET_ALL}                     发送企业微信消息
   {C.GREEN}ask <问题>{S.RESET_ALL}                          智能问答（RAG）
   {C.GREEN}kb_build{S.RESET_ALL}                            构建知识库
@@ -58,8 +53,7 @@ HELP_TEXT = f"""
   methodserver restart       重启 MethodServer
   oracle tablespace          查看表空间
   sql SELECT * FROM...       执行 SQL
-  logs file_pattern=Method   查日志
-  approve 12345              审批任务{S.RESET_ALL}
+  logs file_pattern=Method   查日志{S.RESET_ALL}
 """
 
 

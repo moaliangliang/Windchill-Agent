@@ -29,49 +29,6 @@ from .config import settings
 # 操作类
 # ═══════════════════════════════════════════════════════════
 
-def approve_task(task_id: str, comment: str = "") -> str:
-    """审批任务
-
-    对指定工作流任务进行审批操作。
-    可选填审批意见。
-
-    Args:
-        task_id: 任务 ID（从 tasks 命令获取）
-        comment: 审批意见（可选）
-
-    示例:
-        > approve task_id=12345
-        ✅ 任务 12345 已审批
-
-        > approve 12345 同意
-        ✅ 任务 12345 已审批 (备注: 同意)
-    """
-    if not task_id:
-        return "❌ 需要 task_id 参数"
-    return f"✅ 任务 {task_id} 已审批" + (f" (备注: {comment})" if comment else "")
-
-
-def reject_task(task_id: str, comment: str = "") -> str:
-    """驳回任务
-
-    对指定工作流任务进行驳回操作。
-    必须填写驳回原因。
-
-    Args:
-        task_id: 任务 ID
-        comment: 驳回原因（必填）
-
-    示例:
-        > reject 12345 资料不齐全
-        ✅ 任务 12345 已驳回: 资料不齐全
-    """
-    if not task_id:
-        return "❌ 需要 task_id 参数"
-    if not comment:
-        return "❌ 驳回需要 comment 参数（驳回原因）"
-    return f"✅ 任务 {task_id} 已驳回: {comment}"
-
-
 # ═══════════════════════════════════════════════════════════
 # 服务器管理 (SSH)
 # ═══════════════════════════════════════════════════════════
@@ -380,26 +337,6 @@ def view_log(filename: str, max_lines: str = "50", search: str = "") -> str:
         return f"❌ 查看失败: {e}"
 
 
-def create_part(number: str, name: str, description: str = "") -> str:
-    """创建零件
-
-    通过 OData API 在 Windchill 中创建新零件。
-
-    Args:
-        number: 物料编码（必填）
-        name: 零件名称（必填）
-        description: 描述（可选）
-    """
-    if not number or not name:
-        return "❌ 需要 number 和 name 参数"
-    try:
-        from .ssh import run_ssh
-        # OData create part implementation
-        return f"✅ 零件已创建: {number} - {name}"
-    except Exception as e:
-        return f"❌ 创建失败: {e}"
-
-
 def send_wecom_message(user_id: str = "@all", content: str = "") -> str:
     """发送企业微信消息
 
@@ -485,26 +422,16 @@ def send_wecom_message(user_id: str = "@all", content: str = "") -> str:
 # ═══════════════════════════════════════════════════════════
 
 TOOLS = {
-    "approve": approve_task,
-    "create_part": create_part,
     "full_status": server_status_full,
     "logs": query_logs,
     "methodserver": server_methodserver,
     "oracle": server_oracle,
-    "reject": reject_task,
     "sql": oracle_sql,
     "view_log": view_log,
     "wecom": send_wecom_message,
 }
 
 TOOL_ALIASES = {
-    "create_doc": "create_part",
-    "oracle_sql": "sql",
-    "query_logs": "logs",
-    "send_wecom": "wecom",
-    "server_methodserver": "methodserver",
-    "server_oracle": "oracle",
-    "wecom_message": "wecom",
 }
 
 
