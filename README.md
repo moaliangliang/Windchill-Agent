@@ -254,10 +254,11 @@ windchill-agent/
 ├── windchill_agent/
 │   ├── __init__.py
 │   ├── config.py                   # .env 配置管理
-│   ├── windchill.py                # Windchill 工具函数（17个操作）
+│   ├── windchill.py                # Windchill 工具函数（54个）
 │   ├── ssh.py                      # SSH 连接工具（paramiko）
-│   └── repl.py                     # 交互终端（colorama 跨平台颜色）
-├── requirements.txt                # httpx, paramiko, colorama, pyyaml
+│   ├── kb.py                       # 知识库 RAG 引擎（chromadb）
+│   └── repl.py                     # 交互终端 + DeepSeek 知识库
+├── requirements.txt                # httpx, paramiko, colorama, chromadb, sentence-transformers
 ├── .env.example
 ├── .gitignore
 └── README.md
