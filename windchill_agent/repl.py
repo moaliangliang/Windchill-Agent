@@ -81,6 +81,7 @@ HELP_TEXT = f"""
 {Style.BRIGHT}其他:{S.RESET_ALL}
   {C.GREEN}wecom <content>{S.RESET_ALL}                    发送企业微信消息
   {C.GREEN}config{S.RESET_ALL}                             查看配置（含OS类型）
+  {C.GREEN}search <关键词>{S.RESET_ALL}                      搜索操作文档
   {C.GREEN}docs{S.RESET_ALL}                               打开操作文档目录
   {C.GREEN}help / exit{S.RESET_ALL}                        帮助 / 退出
   {Style.DIM}所有命令支持简写: query_by_name → query_by_name 或 query_by_name{S.RESET_ALL}
@@ -118,7 +119,10 @@ def parse_input(text: str) -> tuple:
             remaining.append(arg)
 
     # 剩余参数按位置匹配
-    if cmd in ("part", "bom", "number"):
+    if cmd == "search":
+        if remaining:
+            params["keyword"] = " ".join(remaining)
+    elif cmd in ("part", "bom", "number"):
         if remaining:
             params["number"] = remaining[0]
     elif cmd == "sql":
@@ -151,6 +155,60 @@ def execute_command(cmd: str, params: dict) -> Optional[str]:
 
     if cmd == "config":
         print(settings.summary())
+        return None
+        docs_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "docs")
+        keyword = " ".join(sys.argv[1:]) if len(sys.argv) > 1 else params.get("keyword", params.get("text", ""))
+        if not keyword:
+            keyword = params.get("keyword", params.get("text", ""))
+        if not keyword:
+            print(f"{C.YELLOW}需要搜索关键词，示例: search 集群安装{S.RESET_ALL}")
+            return None
+        if os.path.exists(docs_dir):
+            import glob, subprocess
+            files = glob.glob(os.path.join(docs_dir, "*.md"))
+            results = []
+            for f in files:
+                r = subprocess.run(["grep", "-n", "-i", keyword, f], capture_output=True, text=True, timeout=5)
+                if r.stdout.strip():
+                    fname = os.path.basename(f).replace(".md", "")
+                    for line in r.stdout.strip().split("\n"):
+                        results.append(f"  📄 {fname}:{line}")
+            if results:
+                print(f"{C.GREEN}🔍 找到 {len(results)} 处匹配「{keyword}」:{S.RESET_ALL}")
+                print("\n".join(results[:30]))
+                if len(results) > 30:
+                    print(f"  ... 还有 {len(results)-30} 处")
+            else:
+                print(f"{C.YELLOW}❌ 未找到「{keyword}」相关文档{S.RESET_ALL}")
+        else:
+            print(f"{C.YELLOW}📚 docs/ 目录不存在{S.RESET_ALL}")
+        return None
+
+    if cmd == "search":
+        docs_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "docs")
+        keyword = params.get("keyword", params.get("text", ""))
+        if not keyword and params.get("", ""):
+            keyword = list(params.values())[0]
+        if not keyword:
+            print(f"{C.YELLOW}需要搜索关键词{S.RESET_ALL}")
+            return None
+        if os.path.exists(docs_dir):
+            import glob, subprocess as _sp
+            files = glob.glob(os.path.join(docs_dir, "*.md"))
+            results = []
+            for f in files:
+                r = _sp.run(["grep", "-n", "-i", keyword, f], capture_output=True, text=True, timeout=5)
+                if r.stdout.strip():
+                    fname = os.path.basename(f).replace(".md", "")
+                    for line in r.stdout.strip().split("\n"):
+                        results.append(f"  📄 {fname}:{line}")
+            if results:
+                print(f"{C.GREEN}🔍 找到 {len(results)} 处匹配「{keyword}」:{S.RESET_ALL}")
+                print("\n".join(results[:40]))
+            else:
+                print(f"{C.YELLOW}❌ 文档中未找到「{keyword}」{S.RESET_ALL}")
+        else:
+            print(f"{C.YELLOW}docs/ 目录不存在{S.RESET_ALL}")
         return None
 
     if cmd == "docs":
