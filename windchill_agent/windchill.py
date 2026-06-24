@@ -828,47 +828,829 @@ def send_wecom_message(user_id: str = "@all", content: str = "") -> str:
         return f"❌ 发送失败: {e}"
 
 
+
+# ═══════════════════════════════════════════════════════════
+# 从 knowagent 迁移的函数（共 35 个）
+# ═══════════════════════════════════════════════════════════
+
+def windchill_add_bom_item(parent_number: str, child_number: str, quantity: float = 1.0) -> str:
+    """向 Windchill 物料的 BOM 中添加子件。parent_number=父物料编号, child_number=子件编号, quantity=数量(默认1)。自动处理检出→添加→检入。"""
+    try:
+        client = _get_wc_client()
+        result = client.add_part_use(parent_number, child_number, quantity)
+        client.close()
+        if result.get("success"):
+            return f"✅ 已成功向物料 {parent_number} 的 BOM 中添加子件 [{child_number}]，数量 {quantity}。系统已自动完成检出→添加→检入。"
+        return "添加失败"
+    except ValueError as e:
+        return str(e)
+    except Exception as e:
+        return json.dumps({"error": f"添加 BOM 子件失败: {str(e)}"})
+
+def windchill_create_co(subject: str, description: str = "") -> str:
+    """创建工程变更通告(CO/ECN)。OData ChangeMgmt API 不支持 CREATE 操作，需通过 SSH + WindchillAgent 执行。"""
+    return _wc_run("create_co", subject, description)
+
+def windchill_create_cr(subject: str, description: str = "") -> str:
+    """创建工程变更请求(CR)。OData ChangeMgmt API 不支持 CREATE 操作，需通过 SSH + WindchillAgent 执行。"""
+    return _wc_run("create_cr", subject, description)
+
+def windchill_create_document(name: str, title: str = "", description: str = "", filepath: str = "") -> str:
+    """在 Windchill 中创建新文档。name=文档名称, title=文档标题(可选), description=文档描述/内容(可选), filepath=上传文件路径(可选，提供后自动上传文件作为主内容)"""
+    import os
+    try:
+        # 先检查文件是否存在（支持容器内 /host 挂载路径）
+        actual_path = filepath
+        if filepath:
+            if not os.path.exists(filepath):
+                host_path = '/host' + filepath
+                if os.path.exists(host_path):
+                    actual_path = host_path
+                else:
+                    return f"⚠️ 文件不存在: {filepath}\n请确认文件路径是否正确。文档尚未创建。"
+            if not os.path.isfile(actual_path):
+                return f"⚠️ 路径不是文件: {filepath}"
+
+        client = _get_wc_client()
+        result = client.create_document(name=name, title=title or name, description=description)
+        created = result.get("value", [{}])[0]
+        doc_id = created.get("ID", "")
+        doc_num = created.get("Number", "")
+        client.close()
+
+        upload_info = ""
+        upload_error = ""
+        if actual_path and os.path.exists(actual_path):
+            try:
+                import urllib.request as _ur, ssl as _ssl, json as _json
+                with open(actual_path, "rb") as f:
+                    file_content = f.read()
+                base_name = os.path.basename(filepath)
+                ext = os.path.splitext(base_name)[1].lower()
+                mime_map = {'.txt': 'text/plain', '.pdf': 'application/pdf', '.doc': 'application/msword',
+                            '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                            '.xls': 'application/vnd.ms-excel', '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                            '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+                            '.zip': 'application/zip', '.md': 'text/markdown', '.py': 'text/x-python'}
+                mime_type = mime_map.get(ext, 'application/octet-stream')
+                # 直接三阶上传（不检出）
+                h_base = {"Authorization": f"Basic {base64.b64encode(b'wcadmin:wcadmin').decode()}"}
+                import httpx as _httpx
+                hc = _httpx.Client(verify=False, timeout=60)
+                base_url = f"http://{getattr(settings,'windchill_host','61.169.97.58')}:7380/Windchill/servlet/odata"
+                nonce = hc.get(f"{base_url}/v2/PTC/GetCSRFToken()", headers=h_base).json().get("NonceValue","")
+                h = {**h_base, "CSRF_NONCE": nonce, "Content-Type": "application/json"}
+                s1 = hc.post(f"{base_url}/v6/DocMgmt/Documents('{doc_id}')/PTC.DocMgmt.UploadStage1Action", json={"NoOfFiles":1}, headers=h)
+                cache = s1.json()["value"][0]
+                sid = str(cache["FileNames"][0])
+                bound = f"----Boundary_{sid}"
+                mp = (f"--{bound}\r\nContent-Disposition: form-data; name=\"Master_URL\"\r\n\r\n{cache['MasterUrl']}\r\n"
+                      f"--{bound}\r\nContent-Disposition: form-data; name=\"CacheDescriptor_array\"\r\n\r\n{sid}:{sid}:{sid}:{len(file_content)};\r\n"
+                      f"--{bound}\r\nContent-Disposition: form-data; name=\"{sid}\"; filename=\"{base_name}\"\r\nContent-Type: {mime_type}\r\n\r\n").encode() + file_content + (f"\r\n--{bound}--\r\n").encode()
+                s2_h = {"Content-Type": f"multipart/form-data; boundary={bound}", "CSRF_NONCE": nonce,
+                        "Authorization": f"Basic {base64.b64encode(b'wcadmin:wcadmin').decode()}",
+                        "PTC-Applied-Container-Context": "Default"}
+                ctx = _ssl.create_default_context(); ctx.check_hostname = False; ctx.verify_mode = _ssl.CERT_NONE
+                s2_r = _ur.urlopen(_ur.Request(cache['ReplicaUrl'], data=mp, headers=s2_h, method="POST"), timeout=60, context=ctx)
+                ci = _json.loads(s2_r.read())["contentInfos"][0]
+                nonce = hc.get(f"{base_url}/v2/PTC/GetCSRFToken()", headers=h_base).json().get("NonceValue","")
+                h = {**h_base, "CSRF_NONCE": nonce, "Content-Type": "application/json"}
+                s3 = hc.post(f"{base_url}/v6/DocMgmt/Documents('{doc_id}')/PTC.DocMgmt.UploadStage3Action",
+                    json={"ContentInfo":[{"StreamId":ci["streamId"],"EncodedInfo":ci["encodedInfo"],"FileName":base_name,
+                                         "PrimaryContent":True,"MimeType":mime_type,"FileSize":ci["fileSize"]}]}, headers=h)
+                hc.close()
+                if s3.status_code in (200, 201):
+                    upload_info = f"\n  ✅ 上传文件: {base_name} ({len(file_content)} 字节)"
+                else:
+                    upload_error = f"\n  ⚠️ 上传失败 (HTTP {s3.status_code})"
+            except Exception as e:
+                upload_error = f"\n  ⚠️ 上传出错: {str(e)[:200]}"
+
+        desc_preview = (description[:80].replace('\n', '\\n') + "...") if description else "无"
+        return (
+            f"文档创建{'成功' if not upload_error else '成功但上传失败'}！\n"
+            f"  编号: {doc_num}\n"
+            f"  名称: {created.get('Name', '')}\n"
+            f"  版本: {created.get('Version', '')}"
+            f"{upload_info}"
+            f"{upload_error}\n"
+            f"  描述: {desc_preview}"
+        )
+    except Exception as e:
+        return json.dumps({"error": f"创建文档失败: {str(e)}"})
+
+def windchill_delete_bom_item(parent_number: str, child_number: str) -> str:
+    """删除 Windchill 物料的 BOM 子件。parent_number=父物料编号, child_number=要删除的子件编号。自动处理检出→删除→检入。"""
+    try:
+        client = _get_wc_client()
+        result = client.delete_part_use(child_number, parent_number)
+        client.close()
+        if result.get("success"):
+            return f"✅ 已成功从物料 {parent_number} 的 BOM 中删除子件 {child_number}。系统已自动完成检出→删除→检入。"
+        return "删除失败"
+    except ValueError as e:
+        return str(e)
+    except Exception as e:
+        return json.dumps({"error": f"删除 BOM 子件失败: {str(e)}"})
+
+def windchill_generate_class_xml(name: str, nodes: str = "") -> str:
+    """生成 Windchill 分类定义 XML 文件。name=分类树名称，nodes=JSON数组：[{"name":"标准件","internalName":"Standard","children":[{"name":"螺栓","attributes":[{"name":"规格","type":"STRING"}]}]}]"""
+    try:
+        import json
+        node_list = json.loads(nodes) if nodes else []
+        if not node_list:
+            return "请提供至少一个分类节点。"
+
+        lines = ['<?xml version="1.0" encoding="UTF-8"?>', f'<ClassificationSchema name="{name}">']
+
+        def render_nodes(nodes_data, indent=2):
+            prefix = "  " * indent
+            for node in nodes_data:
+                node_name = node.get("name", "")
+                node_internal = node.get("internalName", node_name)
+                if not node_name:
+                    continue
+                lines.append(f'{prefix}<Node name="{node_name}" internalName="{node_internal}">')
+                for attr in node.get("attributes", []):
+                    attr_name = attr.get("name", "")
+                    if not attr_name:
+                        continue
+                    attr_type = attr.get("type", "STRING").upper()
+                    attr_internal = attr.get("internalName", attr_name)
+                    a = f'{prefix}  <Attribute name="{attr_name}" internalName="{attr_internal}" dataType="{attr_type}"'
+                    if attr.get("description"):
+                        a += f' description="{attr["description"]}"'
+                    a += "/>"
+                    lines.append(a)
+                render_nodes(node.get("children", []), indent + 1)
+                lines.append(f"{prefix}</Node>")
+
+        render_nodes(node_list)
+        lines.append("</ClassificationSchema>")
+        xml_content = "\n".join(lines)
+
+        def count_nodes(nodes_data):
+            c = len(nodes_data)
+            for n in nodes_data:
+                c += count_nodes(n.get("children", []))
+            return c
+
+        def count_attrs(nodes_data):
+            c = sum(len(n.get("attributes", [])) for n in nodes_data)
+            for n in nodes_data:
+                c += count_attrs(n.get("children", []))
+            return c
+
+        return (
+            f"XML 已生成！\n"
+            f"```xml\n{xml_content}\n```\n"
+            f"---\n"
+            f"统计: {count_nodes(node_list)} 个节点, {count_attrs(node_list)} 个属性\n"
+            f"保存为 `{name}_Classification.xml`，上传到服务器后执行:\n"
+            f"`windchill LoadClassification {name}_Classification.xml`"
+        )
+    except json.JSONDecodeError:
+        return 'nodes 格式错误，需为 JSON 数组'
+    except Exception as e:
+        return json.dumps({"error": f"生成 XML 失败: {str(e)}"})
+
+def windchill_generate_lifecycle_xml(name: str = "", states: str = "") -> str:
+    """生成 Windchill 生命周期模板 XML 定义文件。name=模板名称, states=JSON状态列表。需要手动上传到服务器执行 windchill LoadFileDefinition 导入"""
+    try:
+        import json
+        state_list = json.loads(states) if states else []
+        if not name or not state_list:
+            return "需要 name(模板名) 和 states(状态列表) 参数\nstates示例: [{\"name\":\"INWORK\",\"display\":\"工作中\"},{\"name\":\"RELEASED\",\"display\":\"已发布\"}]"
+        lines = ['<?xml version="1.0" encoding="UTF-8"?>', '<LifeCycleTemplates>', f'  <LifeCycleTemplate name="{name}">']
+        for s in state_list:
+            sn = s.get("name","")
+            sd = s.get("display", sn)
+            lines.append(f'    <State name="{sn}" display="{sd}"/>')
+        lines.append('  </LifeCycleTemplate>')
+        lines.append('</LifeCycleTemplates>')
+        xml = "\n".join(lines)
+        return f"✅ 生命周期模板 XML 已生成\n\n```xml\n{xml}\n```\n\n使用: 保存后上传到服务器，执行 windchill LoadFileDefinition <文件名>"
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+def windchill_generate_oir_xml(name: str = "", type_name: str = "wt.part.WTPart", attributes: str = "") -> str:
+    """生成 Windchill 对象初始化规则(OIR) XML。name=规则名, type_name=对象类型, attributes=JSON属性默认值。手动导入"""
+    try:
+        import json
+        attr_list = json.loads(attributes) if attributes else []
+        if not name or not attr_list:
+            return "需要 name(规则名) 和 attributes(JSON属性) 参数"
+        lines = ['<?xml version="1.0" encoding="UTF-8"?>', '<ObjectInitializationRules>',
+                 f'  <ObjectInitializationRule name="{name}" type="{type_name}">']
+        for a in attr_list:
+            an = a.get("name","")
+            av = a.get("value","")
+            lines.append(f'    <Attribute name="{an}" value="{av}"/>')
+        lines.append('  </ObjectInitializationRule>')
+        lines.append('</ObjectInitializationRules>')
+        xml = "\n".join(lines)
+        return f"✅ OIR XML 已生成\n\n```xml\n{xml}\n```\n\n需手动上传到服务器，使用 windchill LoadFileDefinition 导入"
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+def windchill_generate_type_xml(name: str, base_type: str = "WTPart", attributes: str = "") -> str:
+    """生成 Windchill 类型属性定义 XML 文件。用于 LoadFileDefinition 命令导入。name=类型显示名称，base_type=基类型(默认WTPart)，attributes=属性定义，JSON格式：[{"name":"属性名","type":"STRING","label":"标签","searchable":true}]"""
+    try:
+        import json
+        attr_list = json.loads(attributes) if attributes else []
+        if not attr_list:
+            return "请提供至少一个属性定义。"
+
+        DATA_TYPES = ["STRING", "INTEGER", "DOUBLE", "BOOLEAN", "DATE", "LONG", "SHORT", "FLOAT", "BIGDECIMAL"]
+        lines = [
+            '<?xml version="1.0" encoding="UTF-8"?>',
+            '<UDFDefinitions xmlns="http://www.ptc.com/Windchill/load/TypeDef.xsd">',
+            f'  <TypeDef name="{name}" baseType="{base_type}">',
+        ]
+        for attr in attr_list:
+            attr_name = attr.get("name", "")
+            if not attr_name:
+                continue
+            attr_type = attr.get("type", "STRING").upper()
+            if attr_type not in DATA_TYPES:
+                attr_type = "STRING"
+            attr_label = attr.get("label", attr_name)
+            attr_desc = attr.get("description", attr_label)
+            attr_searchable = str(attr.get("searchable", True)).lower()
+            attr_required = str(attr.get("required", False)).lower()
+            lines.append(f'    <AttributeDef name="{attr_name}" dataType="{attr_type}" description="{attr_desc}">')
+            lines.append(f'      <Property name="label" value="{attr_label}"/>')
+            lines.append(f'      <Property name="searchable" value="{attr_searchable}"/>')
+            lines.append(f'      <Property name="required" value="{attr_required}"/>')
+            lines.append("    </AttributeDef>")
+        lines.append("  </TypeDef>")
+        lines.append("</UDFDefinitions>")
+        xml_content = "\n".join(lines)
+
+        table_rows = "\n".join(
+            f"| {a.get('name','')} | {a.get('type','STRING')} | {a.get('label', a.get('name',''))} | {str(a.get('searchable', True))} | {str(a.get('required', False))} |"
+            for a in attr_list if a.get("name")
+        )
+        return (
+            f"XML 已生成！\n"
+            f"```xml\n{xml_content}\n```\n"
+            f"---\n"
+            f"保存为 `{name}_TypeDef.xml`，上传到服务器后执行:\n"
+            f"`windchill LoadFileDefinition {name}_TypeDef.xml`\n\n"
+            f"| 属性 | 类型 | 标签 | 可搜索 | 必填 |\n"
+            f"|------|------|------|:------:|:----:|\n"
+            f"{table_rows}"
+        )
+    except json.JSONDecodeError:
+        return 'attributes 格式错误，需为 JSON 数组，如 [{"name":"硬度","type":"STRING"}]'
+    except Exception as e:
+        return json.dumps({"error": f"生成 XML 失败: {str(e)}"})
+
+def windchill_query_by_name(name: str) -> str:
+    """按物料名称模糊搜索 Windchill 物料列表"""
+    try:
+        client = _get_wc_client()
+        parts = client.query_part_by_name(name)
+        client.close()
+        if parts:
+            result = f"找到 {len(parts)} 个物料:\n\n"
+            for p in parts:
+                result += f"- {p.get('Number','')} | {p.get('Name','')} | v{p.get('Version','')} | {p.get('State',{}).get('Display','')}\n"
+            return result
+        return f"未找到名称包含「{name}」的物料。"
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+def windchill_add_worker(name: str = "OFFICE", host: str = "VM73", exe_path: str = "", instances: str = "1", worker_type: str = "") -> str:
+    """添加新的 Windchill Worker Agent 工作器（通过修改 agent.ini）。
+    name=工作器类型(PROE/OFFICE/等), host=主机名, exe_path=可执行文件路径,
+    instances=最大实例数, worker_type=形状类型(PROE/OFFICE/MSC等)。"""
+    try:
+        
+        h = settings.windchill_ssh_host or getattr(settings, "windchill_host", "61.169.97.58")
+        p = settings.windchill_ssh_port
+        u = settings.windchill_ssh_user
+        pw = settings.windchill_ssh_password
+        wt_home = getattr(settings, "windchill_home", "D:/ptc/Windchill_12.1/Windchill")
+        import subprocess
+        ini_file = f"{wt_home}/conf/wvs/agent.ini"
+        shaptype = worker_type or name
+        
+        # 先读当前配置，找下一个 worker 编号
+        read_cmd = f'cmd /c --% "type {ini_file} | findstr /c:\"[worker\""'
+        r = subprocess.run(["sshpass","-p",pw,"ssh","-o","StrictHostKeyChecking=no","-p",p,f"{u}@{h}",read_cmd], capture_output=True, timeout=10)
+        existing = r.stdout.decode('gbk', errors='replace').strip()
+        worker_count = sum(1 for line in existing.split('\n') if line.strip().startswith('[worker'))
+        next_num = worker_count + 1
+        
+        # 添加新 worker 配置
+        new_section = (
+            f"\n[worker{next_num}]\n"
+            f"distributed=false\n"
+            f"autostart=true\n"
+            f"host={host}\n"
+            f"starttime=60\n"
+            f"startfromlocal=FALSE\n"
+            f"hosttype=local\n"
+            f"localpath=ftp:\n"
+        )
+        if exe_path:
+            new_section += f"exe={exe_path}\n"
+        new_section += (
+            f"maxinstances={instances}\n"
+            f"shapetype={shaptype}\n"
+            f"port={5600 + next_num}\n;\n"
+        )
+        
+        append_cmd = f'cmd /c --% "echo {new_section} >> {ini_file}"'
+        r = subprocess.run(["sshpass","-p",pw,"ssh","-o","StrictHostKeyChecking=no","-p",p,f"{u}@{h}",append_cmd], capture_output=True, timeout=10)
+        
+        # 更新 numworkers
+        update_cmd = f'cmd /c --% "powershell -Command \"(Get-Content {ini_file}) -replace \'numworkers={worker_count}\',\'numworkers={next_num}\' | Set-Content {ini_file}\""'
+        subprocess.run(["sshpass","-p",pw,"ssh","-o","StrictHostKeyChecking=no","-p",p,f"{u}@{h}",update_cmd], capture_output=True, timeout=10)
+        
+        # Reload Worker Agent
+        reload_result = ""
+        try:
+            import httpx, base64
+            wc_host = getattr(settings, "windchill_host", "61.169.97.58")
+            wc_port = getattr(settings, "windchill_http_port", "7380")
+            auth = base64.b64encode(b"wcadmin:wcadmin").decode()
+            nonce_resp = httpx.get(f"http://{wc_host}:{wc_port}/Windchill/wtcore/jsp/wvs/admincad.jsp?containerOid=OR:wt.inf.container.ExchangeContainer:6&u8=1", headers={"Authorization":f"Basic {auth}"}, verify=False, timeout=10)
+            import re
+            nonce = re.search(r'CSRF_NONCE=([^"&]+)', nonce_resp.text)
+            if nonce:
+                reload_resp = httpx.get(f"http://{wc_host}:{wc_port}/Windchill/wtcore/jsp/wvs/admincad.jsp?reload=1&CSRF_NONCE={nonce.group(1)}", headers={"Authorization":f"Basic {auth}"}, verify=False, timeout=10)
+                reload_result = "（已发送重载配置命令）"
+        except Exception:
+            reload_result = "（请手动在管理页面 Reload 配置）"
+        
+        return f"✅ Worker {name}@{host} 已添加 (worker{next_num})\n配置: {ini_file}\n{reload_result}"
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+def windchill_set_preference(name: str = "", value: str = "") -> str:
+    """设置 Windchill 系统首选项。通过 SSH 执行 windchill setprop。name=首选项名称, value=值"""
+    if not name or not value:
+        return "需要 name(首选项名) 和 value(值) 参数。\n常见首选项如: wt.pom.searcgDirectoryForContainer, wt.admin.enableVerboseLogging"
+    try:
+        
+        h = settings.windchill_ssh_host or getattr(settings, "windchill_host", "61.169.97.58")
+        p = settings.windchill_ssh_port
+        u = settings.windchill_ssh_user
+        pw = settings.windchill_ssh_password
+        import subprocess, time
+        cmd = f'cmd /c --% "D:\\ptc\\Windchill_12.1\\Windchill\\bin\\windchill.exe setprop {name}={value}"'
+        r = subprocess.run(["sshpass","-p",pw,"ssh","-o","StrictHostKeyChecking=no","-p",p,f"{u}@{h}",cmd], capture_output=True, timeout=30)
+        out = r.stdout.decode('gbk', errors='replace').strip()
+        if r.returncode == 0:
+            return f"✅ 首选项已设置: {name}={value}\n{out[:500]}"
+        return f"⚠️ 设置可能失败:\n{out[:500]}"
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+def windchill_worker_agent_status() -> str:
+    """查询 Windchill Worker Agent（工作器代理）状态。通过访问 WVS 管理页面提取 CAD 工作器状态信息。"""
+    try:
+        import httpx
+        
+
+        host = getattr(settings, "windchill_host", "61.169.97.58")
+        port = getattr(settings, "windchill_http_port", "7380")
+        user = getattr(settings, "windchill_odata_user", "wcadmin")
+        pwd = getattr(settings, "windchill_odata_password", "wcadmin")
+
+        import base64
+        auth = base64.b64encode(f"{user}:{pwd}".encode()).decode()
+
+        url = (
+            f"http://{host}:{port}/Windchill/wtcore/jsp/wvs/admincad.jsp"
+            "?containerOid=OR:wt.inf.container.ExchangeContainer:6&u8=1"
+        )
+
+        with httpx.Client(verify=False, timeout=30) as client:
+            resp = client.get(
+                url,
+                headers={
+                    "Authorization": f"Basic {auth}",
+                    "Accept": "text/html",
+                },
+            )
+            resp.raise_for_status()
+            html = resp.text
+
+        # 解析 Worker Agent 状态
+        import re
+        lines = ["## Worker Agent（工作器代理）状态", ""]
+
+        # 查找所有 worker 行
+        worker_rows = re.findall(
+            r'<TR[^>]*class="table(?:odd|even)rowbg"[^>]*>.*?</TR>',
+            html, re.DOTALL
+        )
+
+        if not worker_rows:
+            # 备用提取方式：找包含 Worker 表头和 VM 行的数据
+            all_rows = re.findall(r'<TR[^>]*>(.*?)</TR>', html, re.DOTALL)
+            for row in all_rows:
+                if 'VM' in row or 'worker' in row.lower():
+                    cells = re.findall(r'<DIV[^>]*class="tabledatacell"[^>]*>(.*?)</DIV>', row, re.DOTALL)
+                    if not cells:
+                        cells = re.findall(r'<DIV[^>]*>(.*?)</DIV>', row, re.DOTALL)
+                    worker_name = ''
+                    status = ''
+                    online = ''
+                    jobs = ''
+
+                    for j, cell in enumerate(cells):
+                        text = re.sub(r'<[^>]+>', ' ', cell)
+                        text = re.sub(r'\s+', ' ', text).strip()
+
+                        if j == 1:
+                            worker_name = text
+                        elif j == 2:
+                            online = "在线" if 'checked.gif' in cell or 'checked' in cell else "离线" if 'unchecked.gif' in cell else ""
+                        elif j == 3:
+                            status = text
+                        elif j == 5:
+                            jobs = text
+
+                    if worker_name:
+                        lines.append(f"- **{worker_name}**")
+                        if online:
+                            lines.append(f"  在线状态: {online}")
+                        lines.append(f"  运行状态: {status or '未知'}")
+                        if jobs:
+                            lines.append(f"  作业数: {jobs}")
+                        lines.append("")
+
+        if len(lines) <= 3:
+            # 尝试简单关键词提取
+            for row in all_rows:
+                if 'VM' in row:
+                    text = re.sub(r'<[^>]+>', ' ', row)
+                    text = re.sub(r'\s+', ' ', text).strip()
+                    lines.append(f"- {text[:100]}")
+
+        if len(lines) <= 3:
+            lines.append("未找到 Worker Agent 状态数据，可能是页面访问受限。")
+
+        lines.append("---")
+        lines.append(f"*数据来源: {url}*")
+
+        return "\n".join(lines)
+
+    except httpx.HTTPStatusError as e:
+        return f"❌ 访问 Worker Agent 管理页面失败 (HTTP {e.response.status_code})"
+    except httpx.RequestError as e:
+        return f"❌ 无法连接 Windchill 服务器: {e}"
+    except Exception as e:
+        return json.dumps({"error": f"查询 Worker Agent 状态失败: {str(e)}"})
+
+def windchill_worker_control(action: str = "status", name: str = "", host: str = "", instance: str = "1") -> str:
+    """控制 Windchill Worker Agent（工作器代理/工作器）。
+    通过 WVS 管理页面 admincad.jsp 操作。
+    action=操作(status/start/stop/start_all/stop_all/reload),
+    name=工作器类型(PROE/OFFICE等), host=主机名, instance=实例号。
+    start和stop需要name+host+instance参数（从 worker_agent_status 查看）。"""
+    try:
+        import httpx, re
+        
+
+        wc_host = getattr(settings, "windchill_host", "61.169.97.58")
+        wc_port = getattr(settings, "windchill_http_port", "7380")
+        user = getattr(settings, "windchill_odata_user", "wcadmin")
+        pwd = getattr(settings, "windchill_odata_password", "wcadmin")
+
+        import base64
+        auth = base64.b64encode(f"{user}:{pwd}".encode()).decode()
+        headers = {"Authorization": f"Basic {auth}"}
+        base_url = f"http://{wc_host}:{wc_port}/Windchill/wtcore/jsp/wvs"
+
+        with httpx.Client(verify=False, timeout=15) as client:
+            # Step 1: 先获取 CSRF_NONCE
+            r = client.get(
+                f"{base_url}/admincad.jsp",
+                params={"containerOid": "OR:wt.inf.container.ExchangeContainer:6", "u8": "1"},
+                headers=headers,
+            )
+            r.raise_for_status()
+            nonce_match = re.search(r'CSRF_NONCE=([^"&]+)', r.text)
+            if not nonce_match:
+                return "无法获取 CSRF_NONCE，页面访问可能受限。"
+            nonce = nonce_match.group(1)
+
+            act = action.lower().strip()
+
+            # Step 2: 执行操作
+            if act == "status":
+                # 直接返回 agent status 的结果
+                r = client.get(
+                    f"{base_url}/admincad.jsp",
+                    params={"containerOid": "OR:wt.inf.container.ExchangeContainer:6", "u8": "1"},
+                    headers=headers,
+                )
+                html = r.text
+                return _parse_worker_status(html, base_url)
+
+            elif act == "start_all":
+                r = client.get(f"{base_url}/admincad.jsp?startAll=1&CSRF_NONCE={nonce}", headers=headers)
+                return "✅ 已发送启动所有工作器命令，请稍后用 status 查看结果。"
+
+            elif act == "stop_all":
+                r = client.get(f"{base_url}/admincad.jsp?stopAll=1&CSRF_NONCE={nonce}", headers=headers)
+                return "✅ 已发送停止所有工作器命令，请稍后用 status 查看结果。"
+
+            elif act == "reload":
+                r = client.get(f"{base_url}/admincad.jsp?reload=1&CSRF_NONCE={nonce}", headers=headers)
+                return "✅ 工作器配置文件已重新加载。"
+
+            elif act == "start":
+                if not name or not host:
+                    return "启动工作器需要 name(类型) 和 host(主机名) 参数。\n示例: start&name=PROE&host=VM73&instance=1"
+                r = client.get(
+                    f"{base_url}/admincad.jsp?start={name}&host={host}&instanceNumber={instance}&starttime=60&CSRF_NONCE={nonce}",
+                    headers=headers,
+                )
+                return f"✅ 已发送启动 {name}@{host}:{instance} 命令，请稍后用 status 查看。"
+
+            elif act == "stop":
+                if not name or not host:
+                    return "停止工作器需要 name(类型) 和 host(主机名) 参数。\n示例: stop&name=PROE&host=VM73&instance=1"
+                r = client.get(
+                    f"{base_url}/admincad.jsp?offline={name}&host={host}&instanceNumber={instance}&CSRF_NONCE={nonce}",
+                    headers=headers,
+                )
+                return f"✅ 已发送停止 {name}@{host}:{instance} 命令，请稍后用 status 查看。"
+
+            elif act == "restart":
+                # 先停止再启动
+                if not name or not host:
+                    return "重启工作器需要 name 和 host 参数。"
+                client.get(
+                    f"{base_url}/admincad.jsp?offline={name}&host={host}&instanceNumber={instance}&CSRF_NONCE={nonce}",
+                    headers=headers,
+                )
+                client.get(
+                    f"{base_url}/admincad.jsp?start={name}&host={host}&instanceNumber={instance}&starttime=60&CSRF_NONCE={nonce}",
+                    headers=headers,
+                )
+                return f"✅ 已发送重启 {name}@{host}:{instance} 命令（先停止→再启动），请稍后用 status 查看。"
+
+            elif act == "debug":
+                r = client.get(f"{base_url}/admincad.jsp?startindebug=1&CSRF_NONCE={nonce}", headers=headers)
+                return "✅ 已发送调试模式启动命令（详细日志输出）。"
+
+            else:
+                return (f"不支持的操作: {act}。支持: status, start_all, stop_all, "
+                        f"reload, start, stop, restart, debug\n"
+                        f"start/stop/restart 需要: name(类型)+host(主机)+instance(实例号)")
+
+    except httpx.HTTPStatusError as e:
+        return f"❌ Worker Agent 操作失败 (HTTP {e.response.status_code})"
+    except httpx.RequestError as e:
+        return f"❌ 无法连接 Windchill 服务器: {e}"
+    except Exception as e:
+        return json.dumps({"error": f"Worker Agent 控制失败: {str(e)}"})
+
+
+def windchill_create_event_subscription(*args, **kwargs) -> str:
+    """创建 Windchill 事件订阅。当指定事件发生时自动回调指定 URL。 — 需在 knowagent 项目中运行"""
+    return "❌ 此功能需要 knowagent 项目的 windchill-client 库支持（未迁移到独立项目）"
+
+
+
+def windchill_delete_event_subscription(*args, **kwargs) -> str:
+    """删除 Windchill 事件订阅。subscription_id=订阅ID。 — 需在 knowagent 项目中运行"""
+    return "❌ 此功能需要 knowagent 项目的 windchill-client 库支持（未迁移到独立项目）"
+
+
+
+def windchill_delete_part(*args, **kwargs) -> str:
+    """删除 Windchill 物料。通过 OData DeleteParts 操作。number=物料编号 — 需在 knowagent 项目中运行"""
+    return "❌ 此功能需要 knowagent 项目的 windchill-client 库支持（未迁移到独立项目）"
+
+
+
+def windchill_edit_part_security_labels(*args, **kwargs) -> str:
+    """编辑 Windchill 物料安全标签。通过 OData EditPartsSecurityLabels。number= — 需在 knowagent 项目中运行"""
+    return "❌ 此功能需要 knowagent 项目的 windchill-client 库支持（未迁移到独立项目）"
+
+
+
+def windchill_get_parts_list(*args, **kwargs) -> str:
+    """获取 Windchill 物料汇总 BOM（每个唯一零件的合计数量）。part_number=物料编号 — 需在 knowagent 项目中运行"""
+    return "❌ 此功能需要 knowagent 项目的 windchill-client 库支持（未迁移到独立项目）"
+
+
+
+def windchill_get_workitem_reassign_user_list(*args, **kwargs) -> str:
+    """查询 Windchill 工作流任务可转派的用户列表。task_id=工作流任务ID — 需在 knowagent 项目中运行"""
+    return "❌ 此功能需要 knowagent 项目的 windchill-client 库支持（未迁移到独立项目）"
+
+
+
+def windchill_list_event_subscriptions(*args, **kwargs) -> str:
+    """查询 Windchill 事件订阅列表。通过 OData EventMgmt API。 — 需在 knowagent 项目中运行"""
+    return "❌ 此功能需要 knowagent 项目的 windchill-client 库支持（未迁移到独立项目）"
+
+
+
+def windchill_list_events(*args, **kwargs) -> str:
+    """查询 Windchill 中可订阅的事件类型列表。通过 OData EventMgmt API。 — 需在 knowagent 项目中运行"""
+    return "❌ 此功能需要 knowagent 项目的 windchill-client 库支持（未迁移到独立项目）"
+
+
+
+def windchill_obsolete_part(*args, **kwargs) -> str:
+    """作废 Windchill 中的指定物料。通过 OData SetStateParts 操作。将状态设置为终态（Defau — 需在 knowagent 项目中运行"""
+    return "❌ 此功能需要 knowagent 项目的 windchill-client 库支持（未迁移到独立项目）"
+
+
+
+def windchill_query_groups(*args, **kwargs) -> str:
+    """查询 Windchill 用户组列表。通过 OData PrincipalMgmt API。 — 需在 knowagent 项目中运行"""
+    return "❌ 此功能需要 knowagent 项目的 windchill-client 库支持（未迁移到独立项目）"
+
+
+
+def windchill_query_part_lists(*args, **kwargs) -> str:
+    """查询 Windchill 零件清单列表。通过 OData PartListMgmt API。 — 需在 knowagent 项目中运行"""
+    return "❌ 此功能需要 knowagent 项目的 windchill-client 库支持（未迁移到独立项目）"
+
+
+
+def windchill_query_problem_reports(*args, **kwargs) -> str:
+    """查询 Windchill 问题报告(PR)列表。通过 OData ChangeMgmt API。 — 需在 knowagent 项目中运行"""
+    return "❌ 此功能需要 knowagent 项目的 windchill-client 库支持（未迁移到独立项目）"
+
+
+
+def windchill_query_variances(*args, **kwargs) -> str:
+    """查询 Windchill 偏差列表。通过 OData ChangeMgmt API。 — 需在 knowagent 项目中运行"""
+    return "❌ 此功能需要 knowagent 项目的 windchill-client 库支持（未迁移到独立项目）"
+
+
+
+def windchill_reassign_task(*args, **kwargs) -> str:
+    """转派 Windchill 工作流任务给其他用户。通过 OData Workflow API ReassignWorkIt — 需在 knowagent 项目中运行"""
+    return "❌ 此功能需要 knowagent 项目的 windchill-client 库支持（未迁移到独立项目）"
+
+
+
+def windchill_revise_part(*args, **kwargs) -> str:
+    """修订（升版）Windchill 物料。通过 OData ReviseParts 操作创建新版本。number=物料编号 — 需在 knowagent 项目中运行"""
+    return "❌ 此功能需要 knowagent 项目的 windchill-client 库支持（未迁移到独立项目）"
+
+
+
+def windchill_save_workitem(*args, **kwargs) -> str:
+    """暂存 Windchill 工作流任务（保存备注，不提交审批/驳回）。通过 OData Workflow API Save — 需在 knowagent 项目中运行"""
+    return "❌ 此功能需要 knowagent 项目的 windchill-client 库支持（未迁移到独立项目）"
+
+
+
+def windchill_update_common_properties(*args, **kwargs) -> str:
+    """更新 Windchill 物料通用属性（名称、单位等）。number=物料编号, field=属性名, value=新值 — 需在 knowagent 项目中运行"""
+    return "❌ 此功能需要 knowagent 项目的 windchill-client 库支持（未迁移到独立项目）"
+
+
+
+def windchill_update_part(*args, **kwargs) -> str:
+    """更新 Windchill 物料属性。通过 OData UpdateParts 操作。number=物料编号, field — 需在 knowagent 项目中运行"""
+    return "❌ 此功能需要 knowagent 项目的 windchill-client 库支持（未迁移到独立项目）"
+
+
+
+def windchill_oracle_backup(*args, **kwargs) -> str:
+    """备份 Oracle 数据库。method=备份方式(expdp/rman)，dump_dir=导出目录，schemas= — 需在 knowagent 项目中运行"""
+    return "❌ 此功能需要 knowagent 项目的 windchill-client 库支持（未迁移到独立项目）"
+
+
+
+def windchill_system_clone(*args, **kwargs) -> str:
+    """Windchill 系统克隆准备：导出数据库 + 导出配置。output_dir=备份文件输出目录(可选，默认数据泵目录 — 需在 knowagent 项目中运行"""
+    return "❌ 此功能需要 knowagent 项目的 windchill-client 库支持（未迁移到独立项目）"
+
+
+
+def windchill_system_rehost(*args, **kwargs) -> str:
+    """Windchill 系统重托管（Rehost）：修改主机名/端口配置。需要提供 new_hostname(新主机名),  — 需在 knowagent 项目中运行"""
+    return "❌ 此功能需要 knowagent 项目的 windchill-client 库支持（未迁移到独立项目）"
+
+
+
 # ═══════════════════════════════════════════════════════════
 # 命令注册表
 # ═══════════════════════════════════════════════════════════
 
 TOOLS = {
-    "status": server_status,
+    "add_bom_item": windchill_add_bom_item,
+    "add_worker": windchill_add_worker,
+    "approve": approve_task,
+    "bom": query_bom,
+    "co": query_change_orders,
+    "cr": query_change_requests,
+    "create_co": windchill_create_co,
+    "create_cr": windchill_create_cr,
+    "create_document": windchill_create_document,
+    "create_event_subscription": windchill_create_event_subscription,
+    "create_part": create_part,
+    "delete_bom_item": windchill_delete_bom_item,
+    "delete_event_subscription": windchill_delete_event_subscription,
+    "delete_part": windchill_delete_part,
+    "docs": query_documents,
+    "edit_part_security_labels": windchill_edit_part_security_labels,
     "full_status": server_status_full,
+    "generate_class_xml": windchill_generate_class_xml,
+    "generate_lifecycle_xml": windchill_generate_lifecycle_xml,
+    "generate_oir_xml": windchill_generate_oir_xml,
+    "generate_type_xml": windchill_generate_type_xml,
+    "get_parts_list": windchill_get_parts_list,
+    "get_workitem_reassign_user_list": windchill_get_workitem_reassign_user_list,
+    "list_event_subscriptions": windchill_list_event_subscriptions,
+    "list_events": windchill_list_events,
+    "logs": query_logs,
+    "methodserver": server_methodserver,
+    "obsolete_part": windchill_obsolete_part,
+    "oracle": server_oracle,
+    "oracle_backup": windchill_oracle_backup,
     "part": query_part,
     "parts": list_parts,
-    "bom": query_bom,
-    "docs": query_documents,
-    "users": query_users,
-    "tasks": query_workitems,
-    "cr": query_change_requests,
-    "co": query_change_orders,
-    "approve": approve_task,
+    "query_by_name": windchill_query_by_name,
+    "query_groups": windchill_query_groups,
+    "query_part_lists": windchill_query_part_lists,
+    "query_problem_reports": windchill_query_problem_reports,
+    "query_variances": windchill_query_variances,
+    "reassign_task": windchill_reassign_task,
     "reject": reject_task,
-    "methodserver": server_methodserver,
-    "oracle": server_oracle,
+    "revise_part": windchill_revise_part,
+    "save_workitem": windchill_save_workitem,
+    "set_preference": windchill_set_preference,
     "sql": oracle_sql,
-    "logs": query_logs,
+    "status": server_status,
+    "system_clone": windchill_system_clone,
+    "system_rehost": windchill_system_rehost,
+    "tasks": query_workitems,
+    "update_common_properties": windchill_update_common_properties,
+    "update_part": windchill_update_part,
+    "users": query_users,
     "view_log": view_log,
-    "create_part": create_part,
     "wecom": send_wecom_message,
+    "worker_agent_status": windchill_worker_agent_status,
+    "worker_control": windchill_worker_control,
 }
 
 TOOL_ALIASES = {
-    "server": "status",
-    "query_part": "part",
-    "list_parts": "parts",
-    "documents": "docs",
-    "workitems": "tasks",
-    "change_requests": "cr",
+    "add_bom_item": "add_bom_item",
+    "add_worker": "add_worker",
     "change_orders": "co",
+    "change_requests": "cr",
+    "create_co": "create_co",
+    "create_cr": "create_cr",
+    "create_doc": "create_part",
+    "create_document": "create_document",
+    "create_event_subscription": "create_event_subscription",
+    "delete_bom_item": "delete_bom_item",
+    "delete_event_subscription": "delete_event_subscription",
+    "delete_part": "delete_part",
+    "documents": "docs",
+    "edit_part_security_labels": "edit_part_security_labels",
+    "generate_class_xml": "generate_class_xml",
+    "generate_lifecycle_xml": "generate_lifecycle_xml",
+    "generate_oir_xml": "generate_oir_xml",
+    "generate_type_xml": "generate_type_xml",
+    "get_parts_list": "get_parts_list",
+    "get_workitem_reassign_user_list": "get_workitem_reassign_user_list",
+    "list_event_subscriptions": "list_event_subscriptions",
+    "list_events": "list_events",
+    "list_parts": "parts",
+    "obsolete_part": "obsolete_part",
+    "oracle_backup": "oracle_backup",
+    "oracle_sql": "sql",
+    "query_by_name": "query_by_name",
+    "query_groups": "query_groups",
+    "query_logs": "logs",
+    "query_part": "part",
+    "query_part_lists": "query_part_lists",
+    "query_problem_reports": "query_problem_reports",
+    "query_variances": "query_variances",
+    "reassign_task": "reassign_task",
+    "revise_part": "revise_part",
+    "save_workitem": "save_workitem",
+    "send_wecom": "wecom",
+    "server": "status",
     "server_methodserver": "methodserver",
     "server_oracle": "oracle",
-    "oracle_sql": "sql",
-    "query_logs": "logs",
-    "create_doc": "create_part",
-    "send_wecom": "wecom",
+    "set_preference": "set_preference",
+    "system_clone": "system_clone",
+    "system_rehost": "system_rehost",
+    "update_common_properties": "update_common_properties",
+    "update_part": "update_part",
     "wecom_message": "wecom",
+    "worker_agent_status": "worker_agent_status",
+    "worker_control": "worker_control",
+    "workitems": "tasks",
 }
 
 
