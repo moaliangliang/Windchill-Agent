@@ -8,7 +8,6 @@ from typing import Optional
 
 from .config import settings
 from .windchill import TOOLS, TOOL_ALIASES, execute as windchill_execute
-from .kb import kb as knowledge_base
 
 try:
     from colorama import init, Fore, Style, Back
@@ -43,8 +42,7 @@ HELP_TEXT = f"""
 
 {Style.BRIGHT}其他:{S.RESET_ALL}
   {C.GREEN}wecom <content>{S.RESET_ALL}                     发送企业微信消息
-  {C.GREEN}ask <问题>{S.RESET_ALL}                          智能问答（RAG）
-  {C.GREEN}kb_build{S.RESET_ALL}                            构建知识库
+  {C.GREEN}ask <问题>{S.RESET_ALL}                          知识库问答
   {C.GREEN}config{S.RESET_ALL}                              查看配置
   {C.GREEN}help / exit{S.RESET_ALL}                         帮助 / 退出
 
@@ -146,22 +144,8 @@ def execute_command(cmd: str, params: dict) -> Optional[str]:
             print(f"{C.YELLOW}📚 docs/ 目录不存在{S.RESET_ALL}")
         return None
 
-    if cmd in ("kb_build", "build_kb", "rebuild"):
-        print(f"{C.CYAN}📚 正在构建知识库...{S.RESET_ALL}")
-        result = knowledge_base.build()
-        print(result)
-        return None
-
-    if cmd in ("ask", "query", "问题"):
-        question = params.get("keyword", params.get("text", ""))
-        if not question:
-            question = " ".join(sys.argv[2:]) if len(sys.argv) > 2 else ""
-        if not question:
-            print(f"{C.YELLOW}请输入问题，如: ask BOM 怎么搭建{S.RESET_ALL}")
-            return None
-        print(f"{C.CYAN}🤔 思考中...{S.RESET_ALL}")
-        result = knowledge_base.ask(question)
-        print(result)
+    if cmd in ("ask", "query"):
+        print(f"{C.YELLOW}知识库已移除，请参考 knowagent 项目进行知识库问答{S.RESET_ALL}")
         return None
 
     if cmd == "search":
