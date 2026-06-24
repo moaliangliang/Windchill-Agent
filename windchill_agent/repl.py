@@ -54,7 +54,7 @@ HELP_TEXT = f"""
   {C.GREEN}reject <task_id> <原因>{S.RESET_ALL} 驳回任务
 
 {Style.BRIGHT}系统:{S.RESET_ALL}
-  {C.GREEN}config{S.RESET_ALL}                查看配置
+  {C.GREEN}config{S.RESET_ALL}                查看配置（含OS类型）
   {C.GREEN}help{S.RESET_ALL}                  显示帮助
   {C.GREEN}exit/quit{S.RESET_ALL}             退出
 
@@ -141,8 +141,9 @@ def execute_command(cmd: str, params: dict) -> Optional[str]:
 
 
 def main():
-    print(f"{C.CYAN}{Style.BRIGHT}Windchill Agent{S.RESET_ALL} {Style.DIM}v1.0 — 跨平台 Windchill/Oracle 运维{S.RESET_ALL}")
-    print(f"{Style.DIM}输入 help 查看帮助, exit 退出{S.RESET_ALL}")
+    os_icon = {"macos": "🍎", "windows": "🪟", "linux": "🐧"}.get(settings.os_type, "💻")
+    print(f"{C.CYAN}{Style.BRIGHT}Windchill Agent{S.RESET_ALL} {Style.DIM}v1.0{S.RESET_ALL}")
+    print(f"{Style.DIM}{os_icon} {settings.os_type} | 输入 help 查看帮助, exit 退出{S.RESET_ALL}")
     print()
 
     if not settings.is_windchill_configured:

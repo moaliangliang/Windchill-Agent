@@ -44,9 +44,15 @@ class Settings:
         self._env_file = env_file or self._find_env()
         self._load_env()
 
+        # 操作系统类型
+        self.os_type: str = self._detect_os()
+        self.is_windows: bool = self.os_type == "windows"
+        self.is_macos: bool = self.os_type == "macos"
+        self.is_linux: bool = self.os_type == "linux"
+
         # Windchill REST API
         self.windchill_host: str = self._get("WINDCHILL_HOST", "localhost")
-        self.windchill_port: str = self._get("WINDCHILL_HTTP_PORT", "7380")
+        self.windchill_port: str = self._get("WINDCHILL_HTTP_PORT", "80")
         self.windchill_odata_user: str = self._get("WINDCHILL_ODATA_USER", "wcadmin")
         self.windchill_odata_password: str = self._get("WINDCHILL_ODATA_PASSWORD", "wcadmin")
 
@@ -96,6 +102,19 @@ class Settings:
                     os.environ[key] = val
 
     @staticmethod
+    def _detect_os() -> str:
+        """检测操作系统类型"""
+        import platform
+        system = platform.system().lower()
+        if system == "darwin":
+            return "macos"
+        elif system == "windows":
+            return "windows"
+        elif system == "linux":
+            return "linux"
+        return system
+
+    @staticmethod
     def _get(key: str, default: str = "") -> str:
         return os.environ.get(key, default)
 
@@ -112,7 +131,7 @@ class Settings:
         return bool(self.windchill_ssh_host and self.windchill_ssh_user)
 
     def summary(self) -> str:
-        lines = ["📋 当前配置:"]
+        lines = [f"📋 当前配置 [操作系统: {self.os_type}]"]
         if self.is_windchill_configured:
             lines.append(f"  Windchill: {self.windchill_host}:{self.windchill_port}")
         if self.is_ssh_configured:

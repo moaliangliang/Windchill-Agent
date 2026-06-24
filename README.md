@@ -200,7 +200,7 @@ Oracle实例已关闭...
 | 环境变量 | 说明 | 默认值 |
 |----------|------|--------|
 | `WINDCHILL_HOST` | Windchill 服务器地址 | 必填 |
-| `WINDCHILL_HTTP_PORT` | Windchill HTTP 端口 | 7380 |
+| `WINDCHILL_HTTP_PORT` | Windchill HTTP 端口 | 80 |
 | `WINDCHILL_ODATA_USER` | OData API 用户名 | wcadmin |
 | `WINDCHILL_ODATA_PASSWORD` | OData API 密码 | 必填 |
 | `WINDCHILL_SSH_HOST` | SSH 服务器地址（MethodServer/Oracle） | 可选 |
