@@ -211,6 +211,7 @@ def execute_command(cmd: str, params: dict) -> Optional[str]:
 
     # 直接命令
     if cmd in TOOLS or cmd in TOOL_ALIASES:
+        params.pop("action", None)
         return windchill_execute(cmd, **params)
 
     if cmd in settings.__dict__:

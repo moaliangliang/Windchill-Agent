@@ -455,6 +455,7 @@ def execute(action: str, **params) -> str:
         >>> execute("part", number="NRV-001")
         '🔍 找到 1 个零件:\\n  • NRV-001 ...'
     """
+    params.pop("action", None)
     action = TOOL_ALIASES.get(action, action)
     tool = TOOLS.get(action)
     if not tool:

@@ -1,6 +1,6 @@
 # Windchill Agent
 
-> 跨平台 Windchill/Oracle 运维工具 | **10 个核心命令** | 基于 SSH | 支持 Windows / macOS / Linux
+> 跨平台 Windchill/Oracle SSH 运维工具 | **7 个核心命令 + 24 篇知识库文档** | 支持 Windows / macOS / Linux
 
 通过 SSH 远程执行 Windchill/Oracle 运维操作，包括 MethodServer 控制、Oracle 运维、SQL 查询、日志查看、任务审批等。无需 OData API，纯 SSH 实现。
 

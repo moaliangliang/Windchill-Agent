@@ -59,8 +59,8 @@ class Settings:
         # Windchill SSH
         self.windchill_ssh_host: str = self._get("WINDCHILL_SSH_HOST", "")
         self.windchill_ssh_port: int = int(self._get("WINDCHILL_SSH_PORT", "22"))
-        self.windchill_ssh_user: str = self._get("WINDCHILL_SSH_USER", "")
-        self.windchill_ssh_password: str = self._get("WINDCHILL_SSH_PASSWORD", "")
+        self.windchill_ssh_user: str = self._get("WINDCHILL_SSH_USER", "") or self._get("WINDCHILL_USER", "")
+        self.windchill_ssh_password: str = self._get("WINDCHILL_SSH_PASSWORD", "") or self._get("WINDCHILL_PASSWORD", "")
         self.windchill_ssh_key: str = self._get("WINDCHILL_SSH_KEY", "")
         self.windchill_home: str = self._get("WINDCHILL_HOME", "/opt/Windchill")
 
