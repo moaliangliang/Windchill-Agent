@@ -34,50 +34,42 @@ HELP_TEXT = f"""
 {'=' * 60}
 
 {Style.BRIGHT}查询类 (15):{S.RESET_ALL}
-  {C.GREEN}status                          {S.RESET_ALL}服务器状态
-  {C.GREEN}full_status                     {S.RESET_ALL}全面检查(MS+Oracle+磁盘)
-  {C.GREEN}part <编码>{S.RESET_ALL}                    按编码查零件
-  {C.GREEN}parts{S.RESET_ALL}                          最近零件列表
-  {C.GREEN}query_by_name <名称>{S.RESET_ALL}            按名称查零件
-  {C.GREEN}bom <编码>{S.RESET_ALL}                      查 BOM
-  {C.GREEN}docs [number=编码]{S.RESET_ALL}              文档列表/搜索
-  {C.GREEN}users [search=关键词]{S.RESET_ALL}           用户列表/搜索
-  {C.GREEN}tasks [user=用户名]{S.RESET_ALL}             待办任务
-  {C.GREEN}cr / co{S.RESET_ALL}                         变更申请 / 变更单
-  {C.GREEN}logs [file_pattern=xxx]{S.RESET_ALL}         日志列表
-  {C.GREEN}view_log <filename>{S.RESET_ALL}             查看日志内容
-  {C.GREEN}get_parts_list{S.RESET_ALL}                  零件清单列表
-  {C.GREEN}list_events{S.RESET_ALL}                     事件列表
+  {C.GREEN}status / server{S.RESET_ALL}                  服务器状态
+  {C.GREEN}full_status{S.RESET_ALL}                      全面检查(MS+Oracle+磁盘)
+  {C.GREEN}part / name <编码>{S.RESET_ALL}               查零件（编码或名称）
+  {C.GREEN}parts{S.RESET_ALL}                            最近零件列表
+  {C.GREEN}bom <编码>{S.RESET_ALL}                       查 BOM
+  {C.GREEN}docs / groups / users / tasks{S.RESET_ALL}    文档/组/用户/任务
+  {C.GREEN}cr / co{S.RESET_ALL}                          变更申请 / 变更单
+  {C.GREEN}logs / events{S.RESET_ALL}                    日志 / 事件列表
+  {C.GREEN}view_log <filename>{S.RESET_ALL}              查看日志内容
+  {C.GREEN}partlists / problems / variances{S.RESET_ALL}  清单/问题/偏差
 
 {Style.BRIGHT}创建/修改类 (14):{S.RESET_ALL}
-  {C.GREEN}create_part <编码> <名称>{S.RESET_ALL}       创建零件
-  {C.GREEN}create_co / create_cr{S.RESET_ALL}           创建变更单/申请
-  {C.GREEN}create_document <编码> <名称>{S.RESET_ALL}   创建文档
-  {C.GREEN}add_bom_item <编码> <子件> [数量]{S.RESET_ALL} BOM 添加子件
-  {C.GREEN}delete_bom_item <编码> <子件>{S.RESET_ALL}   BOM 删除子件
-  {C.GREEN}revise_part / update_part <编码>{S.RESET_ALL} 修订/更新零件
-  {C.GREEN}delete_part / obsolete_part <编码>{S.RESET_ALL} 删除/报废零件
-  {C.GREEN}set_preference <name> <value>{S.RESET_ALL}   设置首选项
+  {C.GREEN}create_part <编码> <名称>{S.RESET_ALL}        创建零件
+  {C.GREEN}create_co / create_cr / create_doc{S.RESET_ALL} 创建变更单/申请/文档
+  {C.GREEN}bom_add / bom_del <编码> <子件>{S.RESET_ALL}  BOM 添加/删除子件
+  {C.GREEN}revise / update <编码>{S.RESET_ALL}            修订/更新零件
+  {C.GREEN}obsolete / delete <编码>{S.RESET_ALL}          报废/删除零件
+  {C.GREEN}edit_labels / update_props{S.RESET_ALL}        编辑安全标签/更新属性
+  {C.GREEN}preference <name> <value>{S.RESET_ALL}         设置首选项
 
 {Style.BRIGHT}审批/任务类 (5):{S.RESET_ALL}
-  {C.GREEN}approve <task_id> [comment]{S.RESET_ALL}     审批任务
-  {C.GREEN}reject <task_id> <原因>{S.RESET_ALL}         驳回任务
-  {C.GREEN}reassign_task <task_id> <用户>{S.RESET_ALL}  转派任务
-  {C.GREEN}save_workitem <task_id> [comment]{S.RESET_ALL} 保存工作项
+  {C.GREEN}approve / reject <task_id>{S.RESET_ALL}        审批 / 驳回任务
+  {C.GREEN}reassign <task_id> <用户>{S.RESET_ALL}         转派任务
+  {C.GREEN}save_wi <task_id> [comment]{S.RESET_ALL}       保存工作项
 
 {Style.BRIGHT}服务器管理 (9):{S.RESET_ALL}
-  {C.GREEN}methodserver <status/start/stop>{S.RESET_ALL}   MethodServer 控制
-  {C.GREEN}worker_agent_status{S.RESET_ALL}                Worker Agent 状态
-  {C.GREEN}worker_control <action> [name] [host]{S.RESET_ALL} Worker Agent 控制
-  {C.GREEN}oracle <status/tablespace>{S.RESET_ALL}         Oracle 运维
-  {C.GREEN}oracle_backup <expdp/rman>{S.RESET_ALL}         Oracle 备份
-  {C.GREEN}sql <SQL>{S.RESET_ALL}                          执行 Oracle SQL
-  {C.GREEN}system_clone / system_rehost{S.RESET_ALL}       系统克隆/迁移
-  {C.GREEN}add_worker <name> <host>{S.RESET_ALL}           添加工作器
+  {C.GREEN}methodserver <status/start/stop>{S.RESET_ALL}    MethodServer 控制
+  {C.GREEN}worker_status / worker <action>{S.RESET_ALL}     Worker Agent
+  {C.GREEN}oracle <status/tablespace>{S.RESET_ALL}          Oracle 运维
+  {C.GREEN}backup <expdp/rman>{S.RESET_ALL}                 Oracle 备份
+  {C.GREEN}sql <SQL>{S.RESET_ALL}                           执行 SQL
+  {C.GREEN}clone / rehost{S.RESET_ALL}                      系统克隆/迁移
 
 {Style.BRIGHT}XML 生成 (4):{S.RESET_ALL}
-  {C.GREEN}generate_type_xml / generate_class_xml{S.RESET_ALL}   类型/分类 XML
-  {C.GREEN}generate_lifecycle_xml / generate_oir_xml{S.RESET_ALL} 生命周期/OIR XML
+  {C.GREEN}gen_type / gen_class{S.RESET_ALL}              类型/分类 XML
+  {C.GREEN}gen_lifecycle / gen_oir{S.RESET_ALL}           生命周期/OIR XML
 
 {Style.BRIGHT}其他:{S.RESET_ALL}
   {C.GREEN}wecom <content>{S.RESET_ALL}                    发送企业微信消息
