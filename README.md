@@ -145,9 +145,9 @@ UNDOTBS1          8192      1024
 
 | 环境变量 | 说明 | 默认值 |
 |----------|------|--------|
-| `WINDCHILL_HOST` | Windchill 服务器地址 | 必填 |
+| `WINDCHILL_HOST` | Windchill 服务器地址（Oracle SQL 用） | 可选 |
 | `WINDCHILL_HTTP_PORT` | Windchill HTTP 端口 | 80 |
-| `WINDCHILL_ODATA_USER` | OData API 用户名 | wcadmin |
+| `WINDCHILL_ODATA_USER` | OData API 用户名（Oracle SQL 用） | wcadmin |
 | `WINDCHILL_ODATA_PASSWORD` | OData API 密码 | 必填 |
 | `WINDCHILL_SSH_HOST` | SSH 服务器地址（MethodServer/Oracle） | 可选 |
 | `WINDCHILL_SSH_USER` | SSH 用户名 | 可选 |
@@ -200,7 +200,7 @@ windchill-agent/
 ├── windchill_agent/
 │   ├── __init__.py
 │   ├── config.py                   # .env 配置管理
-│   ├── windchill.py                # Windchill 工具函数（54个）
+│   ├── windchill.py                # Windchill 工具函数（7个核心）
 │   ├── ssh.py                      # SSH 连接工具（paramiko）
 │   ├── kb.py                       # 知识库 RAG 引擎（chromadb）
 │   └── repl.py                     # 交互终端 + DeepSeek 知识库
@@ -213,7 +213,7 @@ windchill-agent/
 ## 常见问题
 
 **Q: 提示 "Windchill 未配置"？**
-A: 检查 `.env` 文件中的 `WINDCHILL_HOST`、`WINDCHILL_ODATA_USER`、`WINDCHILL_ODATA_PASSWORD` 是否正确。
+A: 检查 `.env` 文件中的 `WINDCHILL_HOST`（OData API）、`WINDCHILL_SSH_HOST`（SSH）、`WINDCHILL_SSH_USER`、`WINDCHILL_SSH_PASSWORD` 是否正确。
 
 **Q: 提示 "SSH 连接失败"？**
 A: 确认 `WINDCHILL_SSH_HOST` 和 `WINDCHILL_SSH_USER` 已配置，且 SSH 服务正常运行。
