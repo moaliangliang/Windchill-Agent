@@ -540,14 +540,36 @@ def server_methodserver(action: str = "status") -> str:
     return output if success else f"❌ 操作失败: {output}"
 
 
+def _run_oracle_ssh(command: str, timeout: int = 30):
+    """通过 SSH 在 Oracle 服务器上执行命令
+
+    根据配置自动选择:
+    - Oracle 与 Windchill 同服务器 → 复用 WINDCHILL_SSH_* 配置
+    - Oracle 独立服务器 → 使用 ORACLE_SSH_* 配置
+    """
+    from .ssh import run_ssh
+    if settings.is_oracle_ssh_shared:
+        return run_ssh(command=command, timeout=timeout)
+    # Oracle 独立服务器
+    return run_ssh(
+        host=settings.oracle_ssh_host,
+        port=settings.oracle_ssh_port,
+        user=settings.oracle_ssh_user,
+        password=settings.oracle_ssh_password,
+        key_file=settings.oracle_ssh_key,
+        command=command,
+        timeout=timeout,
+    )
+
+
 def oracle_sql(sql: str) -> str:
     """执行 Oracle SQL 查询
 
     通过 SSH + sqlplus 在 Oracle 数据库上执行任意 SQL 语句。
-    自动适配 Linux/Windows 服务器。
+    自动判断 Oracle 与 Windchill 是否同服务器，选择正确的 SSH 连接。
 
     Linux: echo "sql" | sqlplus -S
-    Windows: echo sql | sqlplus -S (PowerShell 兼容)
+    Windows: echo sql | sqlplus -S
 
     Args:
         sql: 要执行的 SQL 语句
@@ -576,7 +598,6 @@ def oracle_sql(sql: str) -> str:
     """
     if not sql:
         return "❌ 需要 sql 参数"
-    from .ssh import run_ssh
     oh = settings.oracle_home
     user = settings.windchill_odata_user
     pwd = settings.windchill_odata_password
@@ -584,18 +605,16 @@ def oracle_sql(sql: str) -> str:
     port = settings.oracle_port
     sid = settings.oracle_sid
 
-    # 适配不同 OS 的 sqlplus 调用
     if settings.is_server_linux:
         sql_clean = sql.replace('"', '\\"')
         conn_str = f"{user}/{pwd}@//{host}:{port}/{sid}"
         cmd = f'echo "{sql_clean}" | {oh}/bin/sqlplus -S "{conn_str}"'
     else:
-        # Windows: 使用临时文件传递 SQL（echo | sqlplus 在 CMD 中会出错）
         sql_win = sql.replace('"', '\\"')
         conn_str = f"{user}/{pwd}@//{host}:{port}/{sid}"
         cmd = f'cmd /c "echo {sql_win} | {oh}\\bin\\sqlplus -S {conn_str}"'
 
-    success, output = run_ssh(command=cmd, timeout=30)
+    success, output = _run_oracle_ssh(command=cmd, timeout=30)
     return output if success else f"❌ SQL 执行失败: {output}"
 
 
@@ -603,10 +622,11 @@ def server_oracle(action: str = "status") -> str:
     """Oracle 数据库运维
 
     通过 SSH 远程管理 Oracle 数据库。
+    自动判断 Oracle 与 Windchill 是否同服务器，选择正确的 SSH 连接。
     自动适配 Linux/Windows 服务器命令。
 
-    Linux: ps -ef | grep pmon / sqlplus / as sysdba <<EOF
-    Windows: tasklist /FI "IMAGENAME eq oracle.exe" / sqlplus / as sysdba
+    Linux: ps -ef | grep pmon / sqlplus / as sysdba
+    Windows: tasklist / sqlplus / as sysdba
 
     Args:
         action: 操作类型
@@ -617,7 +637,7 @@ def server_oracle(action: str = "status") -> str:
 
     示例:
         > oracle status
-        oracle 1521 /u01/app/oracle/product/19.0.0
+        ora_pmon_orcl
 
         > oracle tablespace
         TABLESPACE_NAME   TOTAL_MB  USED_MB
@@ -625,7 +645,6 @@ def server_oracle(action: str = "status") -> str:
         USERS             5120      3456
         UNDOTBS1          8192      1024
     """
-    from .ssh import run_ssh
     oh = settings.oracle_home
 
     if settings.is_server_linux:
@@ -647,7 +666,7 @@ def server_oracle(action: str = "status") -> str:
     cmd = commands.get(action)
     if not cmd:
         return f"❌ 不支持: {action}（支持: status/start/stop/tablespace）"
-    success, output = run_ssh(command=cmd, timeout=60)
+    success, output = _run_oracle_ssh(command=cmd, timeout=60)
     return output if success else f"❌ Oracle 操作失败: {output}"
 
 

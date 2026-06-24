@@ -213,6 +213,10 @@ Oracle实例已关闭...
 | `ORACLE_PORT` | Oracle 端口 | 1521 |
 | `ORACLE_SID` | Oracle SID | 可选 |
 | `ORACLE_HOME` | Oracle 安装目录 | 可选 |
+| `ORACLE_SSH_HOST` | Oracle SSH 地址（与 Windchill 同服务器时无需设置） | 同 WINDCHILL_SSH_HOST |
+| `ORACLE_SSH_PORT` | Oracle SSH 端口 | 22 |
+| `ORACLE_SSH_USER` | Oracle SSH 用户名 | 同 WINDCHILL_SSH_USER |
+| `ORACLE_SSH_PASSWORD` | Oracle SSH 密码 | 同 WINDCHILL_SSH_PASSWORD |
 | `WECOM_WEBHOOK_URL` | 企业微信机器人 Webhook | 可选 |
 | `WECOM_CORP_ID` | 企业微信 CorpID | 可选 |
 | `WECOM_AGENT_ID` | 企业微信 AgentID | 可选 |

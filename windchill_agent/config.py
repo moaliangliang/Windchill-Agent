@@ -78,6 +78,16 @@ class Settings:
         self.oracle_password: str = self._get("ORACLE_PASSWORD", "")
         self.oracle_home: str = self._get("ORACLE_HOME", "")
 
+        # Oracle SSH（与 Windchill 可能在同一台服务器，也可能独立）
+        # 未设置时默认复用 WINDCHILL_SSH_* 配置
+        self.oracle_ssh_host: str = self._get("ORACLE_SSH_HOST", self.windchill_ssh_host)
+        self.oracle_ssh_port: int = int(self._get("ORACLE_SSH_PORT", str(self.windchill_ssh_port)))
+        self.oracle_ssh_user: str = self._get("ORACLE_SSH_USER", self.windchill_ssh_user)
+        self.oracle_ssh_password: str = self._get("ORACLE_SSH_PASSWORD", self.windchill_ssh_password)
+        self.oracle_ssh_key: str = self._get("ORACLE_SSH_KEY", self.windchill_ssh_key)
+
+        self.is_oracle_ssh_shared: bool = self.oracle_ssh_host == self.windchill_ssh_host
+
         # WeCom (企业微信)
         self.wecom_webhook: str = self._get("WECOM_WEBHOOK_URL", "")
         self.wecom_corp_id: str = self._get("WECOM_CORP_ID", "")
@@ -139,12 +149,14 @@ class Settings:
     def summary(self) -> str:
         lines = [f"📋 当前配置"]
         lines.append(f"  🖥 客户端: {self.os_type}")
-        lines.append(f"  🖥 服务器: {self.server_os}")
+        lines.append(f"  🖥 服务器OS: {self.server_os}")
         if self.is_windchill_configured:
-            lines.append(f"  🌐 Windchill: {self.windchill_host}:{self.windchill_port}")
+            lines.append(f"  🌐 Windchill API: {self.windchill_host}:{self.windchill_port}")
         if self.is_ssh_configured:
-            lines.append(f"  🔗 SSH: {self.windchill_ssh_user}@{self.windchill_ssh_host}:{self.windchill_ssh_port}")
-        lines.append(f"  🗄 Oracle: {'已配置' if self.oracle_host else '未配置'}")
+            lines.append(f"  🔗 Windchill SSH: {self.windchill_ssh_user}@{self.windchill_ssh_host}:{self.windchill_ssh_port}")
+        if self.oracle_host:
+            ssh_info = f" ({self.oracle_ssh_user}@{self.oracle_ssh_host})" if not self.is_oracle_ssh_shared else " (与Windchill同服务器)"
+            lines.append(f"  🗄 Oracle: {self.oracle_host}:{self.oracle_port}{ssh_info}")
         lines.append(f"  💬 企业微信: {'已配置' if self.wecom_webhook or self.wecom_corp_id else '未配置'}")
         return "\n".join(lines)
 
